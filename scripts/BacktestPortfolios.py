@@ -245,7 +245,6 @@ class Portfolio:
         else:
             weights = np.full_like(prices, self.sharpe_weights[0])
         
-        sold_all = np.zeros_like(prices)
         funds = np.zeros_like(prices)
         total_capital = np.zeros_like(prices) 
         quantities = np.zeros_like(prices)
@@ -258,21 +257,10 @@ class Portfolio:
             else:
                 for j in range(1, len(prices[i])):
                     if prices[i][j] > prices [i-1][j]:
-                        funds[i][j] = prices[i][j]  * quantities[i-1][j]
-                        sold_all[i][j] = 1
-                    else:       
-                        sold_all[i][j] = 0
-                                
-                quantities[i] =  np.sum(funds[i]) * weights[i] / prices[i]             
-                  
-                for k in range(len(quantities[i])):
-                    if sold_all[i][k] == 0:
-                        quantities[i][k] += quantities[i-1][k]
-                        total_capital[i][k]  = quantities[i-1][k] * prices[i-1][k] + quantities[i][k] * prices[i][k]
-                    else:
-                        total_capital[i][k] = quantities[i][k] * prices[i][k]
-                
-                weights[i] = (total_capital[i] /np.sum(total_capital[i]))
+                        funds[i][j] = (prices[i][j] - prices[i-1][j]) * quantities[i-1][j]
+                   
+                quantities[i] =  np.sum(funds[i]) * weights[i] / prices[i] + quantities[i-1]           
+                weights[i] =  quantities[i] / np.sum(quantities[i]*prices[i])
                 
                 df[f'prices_t{i-1}'] = prices[i - 1]
                 df[f'prices_t{i}'] = prices[i]
@@ -280,10 +268,10 @@ class Portfolio:
                 df[f'weights_t{i}'] = weights[i]
                 df[f'funds_t{i}'] = funds[i]
                 df[f'quantities_t{i-1}'] = quantities[i-1]
-                df[f'quantities_bought_t{i}'] = quantities[i]
+                df[f'quantities_bought_t{i}'] = quantities[i] - quantities[i-1]
                 df[f'quantities_t{i}'] = quantities[i]
                 df[f'invested_capital_t{i-1}'] = quantities[i-1] * prices[i-1]
-                df[f'invested_capital_t{i}'] = total_capital[i]
+                df[f'invested_capital_t{i}'] = quantities[i] * prices[i]
                 df[f'cumulative_capital_t{i-1}'] = df[f'invested_capital_t{i-1}'].cumsum()
                 df[f'cumulative_capital_t{i}'] = df[f'invested_capital_t{i}'].cumsum()
                 df.index = self.names
