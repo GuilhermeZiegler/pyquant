@@ -8,40 +8,59 @@ from io import BytesIO
 from PIL import Image
 import pickle
 
-def normalize_candles(ohlc_data):
+def normalize_candles(ohlc_data: np.array) -> np.array:
+
     """
-    Function to normalize and scale OHLC data.
-    
-    Steps:
-    1. Find the smallest value in the OHLC data.
-    2. Divide all values by the smallest value and subtract 1.
-    3. Scale the resulting values to the range 0 to 1.
-    4. Round the values to 5 decimal places.
+    Normalizes an OHLC (Open, High, Low, Close) data vector to a range of [0, 1].
+
+    This function performs Min-Max normalization on the input OHLC data. It scales the values such that 
+    they fit within the range [0, 1], where the smallest value in the input becomes 0 and the largest value becomes 1.
+    The normalized values are then rounded to 5 decimal places.
 
     Parameters:
-    - ohlc_data: numpy array containing the OHLC data.
+    ohlc_data (numpy.ndarray): A numpy array containing the OHLC data to be normalized. The array should be one-dimensional.
 
     Returns:
-    - scaled_values_rounded: array with normalized, scaled, and rounded values.
+    numpy.ndarray: A numpy array containing the normalized OHLC data, with values scaled to the range [0, 1] and rounded to 5 decimal places.
+
+    Example:
+    >>> import numpy as np
+    >>> ohlc_data = np.array([100, 102, 95, 102])
+    >>> normalize_candles(ohlc_data)
+    array([0.71429, 1.     , 0.     , 1.     ])
     """
-    # Step 1: Find the smallest value
     min_value = ohlc_data.min()
+    max_value = ohlc_data.max()
 
-    # Step 2: Divide all data by the smallest value and subtract 1
-    normalized_values = ohlc_data / min_value - 1
+    scaled_values = (ohlc_data - min_value) / (max_value - min_value)
 
-    # Step 3: Scale the resulting values to the range 0 to 1
-    min_normalized = normalized_values.min()
-    max_normalized = normalized_values.max()
-
-    scaled_values = (normalized_values - min_normalized) / (max_normalized - min_normalized)
-
-    # Step 4: Round the scaled values to 5 decimal places
     scaled_values_rounded = np.round(scaled_values, 5)
 
     return scaled_values_rounded
+    
+    
+def plot_normalized_candlestick(candle_vectors: np.array) -> BytesIO:
+    """
+    Plots a candlestick chart based on normalized OHLC data and returns the image as a binary stream.
 
-def plot_normalized_candlestick(candle_vectors):
+    Parameters:
+    ----------
+    candle_vectors : np.array
+        A NumPy array of shape (n, 4), where n is the number of candlesticks. Each row contains four float values representing
+        the normalized OHLC data for a candlestick in the form (open, high, low, close).
+
+    Returns:
+    -------
+    BytesIO
+        A binary stream containing the PNG image of the candlestick chart.
+    
+    Notes:
+    -----
+    - The width of each candlestick is set to 0.2 units, and the spacing between candlesticks is set to 0.3 units.
+    - Candlesticks are colored green if the close price is higher than or equal to the open price, and red otherwise.
+    - The function adjusts the y-axis limits based on the minimum and maximum values of the provided OHLC data.
+    - The plot is saved to a BytesIO buffer and returned as a PNG image.
+    """
     fig, ax = plt.subplots(figsize=(len(candle_vectors), len(candle_vectors)))
     width = 0.2 
     spacing = 0.3 
@@ -115,16 +134,6 @@ def load_csv(uploaded_file, encoding='utf-8', delimiter=','):
     df.set_index('datetime', inplace=True)
     
     return df
-
-
-def load_patterns(pattern_type):
-    pkl_file = f"{pattern_type.lower()}_patterns.pkl"
-    pkl_path = os.path.join("pkl", pkl_file)  
-    if os.path.exists(pkl_path):
-        with open(pkl_path, 'rb') as f:
-            patterns = pickle.load(f)
-        return patterns
-    return {}
 
 def load_pkl(file_path):
     """loads .pkl file"""
@@ -207,7 +216,7 @@ def main():
         with col1:
             candle_size = st.number_input("Select number of candles per image", min_value=1, max_value=100, value=5, step=1)
         with col2:
-            options = ["Random", "End to Start", "Start to End"]
+            options = ["Random", "Tail", "Head"]
             order_option = st.selectbox("Select data order", options)
 
         default_sample_size = 100
@@ -215,31 +224,25 @@ def main():
         if st.button("Process"):
             max_start_index = len(df) - candle_size
             if order_option == "Random":
-                sampled_indices = np.random.choice(np.arange(max_start_index + 1), size=sample_size, replace=False)
-                df_index = sampled_indices
-            elif order_option == "End to Start":
-                sampled_indices = np.arange(len(df) - sample_size, len(df))
-                df_index = sampled_indices
+                sampled_idx = np.random.choice(np.arange(max_start_index + 1), size=sample_size, replace=False)
+            elif order_option == "Tail":
+                sampled_idx = np.arange(len(df) - sample_size, len(df))
             else:
-                sampled_indices = np.arange(sample_size)
-                df_index = sampled_indices
+                sampled_idx = np.arange(sample_size)
                 
             st.session_state.candle_vectors = []
             st.session_state.date = []
             st.session_state.current_index = 0
 
-            for start in df_index:
+            for start in sampled_idx:
                 if start + candle_size <= len(df):
                     
                     segment = df.iloc[start:start + candle_size].sort_index(ascending=True)
                     ohlc_data = segment[['open', 'high', 'low', 'close']].values
-
                     candle_vector = normalize_candles(ohlc_data)
-                  
                     if candle_vector is not None and not any(np.isnan(np.concatenate(candle_vector))):
                         st.session_state.candle_vectors.append(candle_vector)
                         st.session_state.date.append(df.index[start])
-                        st.session_state.current_index = 0  
 
         if st.session_state.data is not None:
             st.divider()
